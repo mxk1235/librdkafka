@@ -384,6 +384,67 @@ RdKafka::HandleImpl::set_log_queue (RdKafka::Queue *queue) {
                 rd_kafka_set_log_queue(rk_, rkqu));
 }
 
+RdKafka::ErrorCode RdKafka::HandleImpl::query_bulk_watermark_offsets (
+    const TopicMetadata* topic,
+    std::vector<TopicPartition*> &lowoffs,
+    std::vector<TopicPartition*> &highoffs,
+    int timeout_ms) {
+  rd_kafka_topic_partition_list_t *c_partitions;
+  rd_kafka_resp_err_t err;
+  int64_t *lows, *highs;
+  size_t num_parts = topic->partitions()->size();
+
+  c_partitions = rd_kafka_topic_partition_list_new(num_parts);
+  rd_kafka_topic_partition_list_add_range (c_partitions,
+                                         topic->topic().c_str(),
+                                         0, num_parts - 1);
+
+  int size = sizeof(int64_t) * num_parts;
+  lows = (int64_t*)malloc(size);
+  memset(lows, 0, size);
+  highs = (int64_t*)malloc(size);
+  memset(highs, 0, size);
+
+  err = rd_kafka_query_bulk_watermark_offsets(
+        rk_, c_partitions, lows, highs, timeout_ms);
+
+  if (!err) {
+    update_partitions_from_c_parts(lowoffs, c_partitions);
+    update_partitions_from_c_parts(highoffs, c_partitions);
+
+    for (size_t i = 0; i < num_parts; ++i)
+    {
+      lowoffs.push_back(
+        TopicPartition::create(topic->topic(), c_partitions->elems[i].partition));
+      lowoffs.back()->set_offset(lows[i]);
+
+      highoffs.push_back(
+        TopicPartition::create(topic->topic(), c_partitions->elems[i].partition));
+      highoffs.back()->set_offset(highs[i]);
+    }
+  }
+  else
+  {
+      /* if (err) */
+      for (size_t i = 0; i < lowoffs.size(); ++i)
+      {
+          delete lowoffs[i];
+      }
+      for (size_t i = 0; i < highoffs.size(); ++i)
+      {
+          delete highoffs[i];
+      }
+      lowoffs.clear();
+      highoffs.clear();
+  }
+
+  free(lows);
+  free(highs);
+  rd_kafka_topic_partition_list_destroy(c_partitions);
+
+  return static_cast<RdKafka::ErrorCode>(err);
+}
+
 namespace RdKafka {
 
 rd_kafka_topic_partition_list_t *

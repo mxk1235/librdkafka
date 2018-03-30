@@ -2736,6 +2736,11 @@ rd_kafka_resume_partitions (rd_kafka_t *rk,
 
 
 
+rd_kafka_resp_err_t
+rd_kafka_query_bulk_watermark_offsets (rd_kafka_t *rk,
+                                       rd_kafka_topic_partition_list_t * partitions,
+                                       int64_t * lows, int64_t * highs,
+                                       int timeout_ms);
 
 /**
  * @brief Query broker for low (oldest/beginning) and high (newest/end) offsets

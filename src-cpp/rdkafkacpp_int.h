@@ -836,6 +836,11 @@ class HandleImpl : virtual public Handle {
   ErrorCode pause (std::vector<TopicPartition*> &partitions);
   ErrorCode resume (std::vector<TopicPartition*> &partitions);
 
+  ErrorCode query_bulk_watermark_offsets (const TopicMetadata* topic,
+                                          std::vector<TopicPartition*> &lowoffs,
+                                          std::vector<TopicPartition*> &highoffs,
+                                          int timeout_ms);
+
   ErrorCode query_watermark_offsets (const std::string &topic,
 				     int32_t partition,
 				     int64_t *low, int64_t *high,

@@ -1262,6 +1262,10 @@ rd_kafka_broker_t *rd_kafka_broker_any_usable (rd_kafka_t *rk,
 		if (rd_timeout_expired(remains))
 			return NULL;
 
+		if (remains > 10) {
+			remains = 10;
+		}
+
 		rd_kafka_brokers_wait_state_change(rk, version, remains);
 	}
 

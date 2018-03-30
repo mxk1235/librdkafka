@@ -1521,9 +1521,38 @@ rd_kafka_broker_t *rd_kafka_broker_any_usable (rd_kafka_t *rk,
                 if (rkb)
                         return rkb;
 
-                remains = rd_timeout_remains(ts_end);
-                if (rd_timeout_expired(remains))
-                        return NULL;
+		remains = rd_timeout_remains(ts_end);
+		if (rd_timeout_expired(remains))
+			return NULL;
+
+		if (remains > 10) {
+			remains = 10;
+		}
+
+		rd_kafka_brokers_wait_state_change(rk, version, remains);
+	}
+
+	return NULL;
+}
+
+
+
+/**
+ * Returns a broker in state `state`, preferring the one with
+ * matching `broker_id`.
+ * Uses Reservoir sampling.
+ *
+ * Locks: rd_kafka_rdlock(rk) MUST be held.
+ * Locality: any thread
+ */
+rd_kafka_broker_t *rd_kafka_broker_prefer (rd_kafka_t *rk, int32_t broker_id,
+					   int state) {
+	rd_kafka_broker_t *rkb, *good = NULL;
+        int cnt = 0;
+
+	TAILQ_FOREACH(rkb, &rk->rk_brokers, rkb_link) {
+                if (RD_KAFKA_BROKER_IS_LOGICAL(rkb))
+                        continue;
 
                 rd_kafka_brokers_wait_state_change(rk, version, remains);
         }

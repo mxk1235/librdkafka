@@ -522,6 +522,7 @@ class Event;
 class Topic;
 class TopicPartition;
 class Metadata;
+class TopicMetadata;
 class KafkaConsumer;
 /**@endcond*/
 
@@ -1432,6 +1433,11 @@ class RD_EXPORT Handle {
    */
   virtual ErrorCode resume (std::vector<TopicPartition*> &partitions) = 0;
 
+
+  virtual ErrorCode query_bulk_watermark_offsets (const TopicMetadata* topic,
+                                                  std::vector<TopicPartition*> &lowoffs,
+                                                  std::vector<TopicPartition*> &highoffs,
+                                                  int timeout_ms) = 0;
 
   /**
    * @brief Query broker for low (oldest/beginning)

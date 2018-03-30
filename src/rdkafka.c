@@ -3370,6 +3370,125 @@ static void rd_kafka_query_wmark_offsets_resp_cb (rd_kafka_t *rk,
         rd_kafka_topic_partition_list_destroy(offsets);
 }
 
+rd_kafka_resp_err_t
+rd_kafka_query_bulk_watermark_offsets (rd_kafka_t *rk,
+                                       rd_kafka_topic_partition_list_t * partitions,
+                                       int64_t *lows, int64_t *highs,
+                                       int timeout_ms) {
+    int i, j;
+    rd_kafka_q_t **replyqs;
+    rd_ts_t ts_end = rd_timeout_init(timeout_ms);
+    struct rd_kafka_partition_leader *leader = NULL;
+    rd_kafka_topic_partition_list_t *offsets;
+    rd_kafka_topic_partition_t *rktpar;
+    rd_list_t leaders;
+    rd_kafka_resp_err_t err;
+    struct _query_wmark_offsets_state *states;
+
+    rd_list_init(&leaders, partitions->cnt,
+                 (void *)rd_kafka_partition_leader_destroy);
+
+    err = rd_kafka_topic_partition_list_query_leaders(rk, partitions,
+                                                      &leaders, timeout_ms);
+    if (err) {
+        rd_list_destroy(&leaders);
+        return err;
+    }
+
+    replyqs = malloc(sizeof(rd_kafka_q_t*) * partitions->cnt);
+    states = malloc(sizeof(struct _query_wmark_offsets_state) * partitions->cnt);
+    memset(replyqs, 0, sizeof(rd_kafka_q_t*) * partitions->cnt);
+    memset(states, 0, sizeof(struct _query_wmark_offsets_state) * partitions->cnt);
+    offsets = rd_kafka_topic_partition_list_new(1);
+    for (i = 0; i < partitions->cnt; i++) {
+
+        // find the leader for this partition, because that's who needs to be queried
+        for (j = 0; j < leaders.rl_cnt; j++) {
+            leader = rd_list_elem(&leaders, j);
+            if (rd_kafka_topic_partition_list_find(leader->partitions,
+                                                   partitions->elems[i].topic,
+                                                   partitions->elems[i].partition)) {
+                break;
+            }
+            leader = NULL;
+        }
+
+        if (!leader) {
+            err = RD_KAFKA_RESP_ERR_LEADER_NOT_AVAILABLE;
+            break;
+        }
+        replyqs[i] = rd_kafka_q_new(rk);
+
+        /* Due to KAFKA-1588 we need to send a request for each wanted offset,
+         * in this case one for the low watermark and one for the high. */
+        states[i].topic = partitions->elems[i].topic;
+        states[i].partition = partitions->elems[i].partition;
+        states[i].offsets[0] = RD_KAFKA_OFFSET_BEGINNING;
+        states[i].offsets[1] = RD_KAFKA_OFFSET_END;
+        states[i].offidx = 0;
+        states[i].err = RD_KAFKA_RESP_ERR__IN_PROGRESS;
+        states[i].ts_end = ts_end;
+
+        if (offsets->cnt > 0)
+            rd_kafka_topic_partition_list_del_by_idx(offsets, 0);
+        rktpar = rd_kafka_topic_partition_list_add(offsets, partitions->elems[i].topic, partitions->elems[i].partition);
+
+        rktpar->offset = RD_KAFKA_OFFSET_BEGINNING;
+        rd_kafka_OffsetRequest(leader->rkb, offsets, 0 /* api_version */,
+                               RD_KAFKA_REPLYQ(replyqs[i], 0),
+                               rd_kafka_query_wmark_offsets_resp_cb,
+                               &states[i]);
+
+        rktpar->offset = RD_KAFKA_OFFSET_END;
+        rd_kafka_OffsetRequest(leader->rkb, offsets, 0 /* api_version */,
+                               RD_KAFKA_REPLYQ(replyqs[i], 0),
+                               rd_kafka_query_wmark_offsets_resp_cb,
+                               &states[i]);
+    }
+    rd_kafka_topic_partition_list_destroy(offsets);
+    rd_list_destroy(&leaders);
+
+    for (i = 0; !err && i < partitions->cnt; i++) {
+        /* Wait for reply (or timeout) */
+        while (states[i].err == RD_KAFKA_RESP_ERR__IN_PROGRESS &&
+            rd_kafka_q_serve(replyqs[i], 100, 0, RD_KAFKA_Q_CB_CALLBACK,
+                             rd_kafka_poll_cb, NULL) != RD_KAFKA_OP_RES_YIELD);
+
+        if (states[i].err) {
+            err = states[i].err;
+            break;
+        }
+        else if (states[i].offidx != 2) {
+            err = RD_KAFKA_RESP_ERR__FAIL;
+            break;
+        }
+
+        // clean up when we know there wasn't an error
+        rd_kafka_q_destroy_owner(replyqs[i]);
+
+        /* We are not certain about the returned order. */
+        if (states[i].offsets[0] < states[i].offsets[1]) {
+            lows[i] = states[i].offsets[0];
+            highs[i] = states[i].offsets[1];
+        } else {
+            lows[i] = states[i].offsets[1];
+            highs[i] = states[i].offsets[0];
+        }
+
+        /* If partition is empty only one offset (the last) will be returned. */
+        if (lows[i] < 0 && highs[i] >= 0)
+            lows[i] = highs[i];
+    }
+
+    // finish cleanup
+    for (; i < partitions->cnt && replyqs[i] != NULL; i++) {
+        rd_kafka_q_destroy_owner(replyqs[i]);
+    }
+    rd_free(states);
+    rd_free(replyqs);
+    return err ? err : RD_KAFKA_RESP_ERR_NO_ERROR;
+}
+
 
 rd_kafka_resp_err_t
 rd_kafka_query_watermark_offsets (rd_kafka_t *rk, const char *topic,

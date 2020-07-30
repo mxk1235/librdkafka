@@ -1540,7 +1540,7 @@ rd_kafka_broker_t *rd_kafka_broker_any_usable (rd_kafka_t *rk,
                 if (rkb)
                         return rkb;
 
-                remains = rd_timeout_remains(ts_end);
+                remains = rd_timeout_remains_limit(ts_end, 10);
                 if (rd_timeout_expired(remains))
                         return NULL;
 

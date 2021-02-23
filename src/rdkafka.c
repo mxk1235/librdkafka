@@ -3450,9 +3450,9 @@ rd_kafka_query_bulk_watermark_offsets (rd_kafka_t *rk,
 
     for (i = 0; !err && i < partitions->cnt; i++) {
         /* Wait for reply (or timeout) */
-        while (states[i].err == RD_KAFKA_RESP_ERR__IN_PROGRESS)
+        while (states[i].err == RD_KAFKA_RESP_ERR__IN_PROGRESS &&
             rd_kafka_q_serve(replyqs[i], 100, 0, RD_KAFKA_Q_CB_CALLBACK,
-                             rd_kafka_poll_cb, NULL);
+                             rd_kafka_poll_cb, NULL) != RD_KAFKA_OP_RES_YIELD);
 
         if (states[i].err) {
             err = states[i].err;

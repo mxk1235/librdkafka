@@ -3456,7 +3456,7 @@ rd_kafka_query_bulk_watermark_offsets (rd_kafka_t *rk,
 
         if (states[i].err) {
             err = states[i].err;
-                rd_kafka_log(rk, LOG_WARNING, "WATERMARK",
+                rd_kafka_log(rk, LOG_WARNING, "METADATA",
                                              "error getting offsets for "
                                              "%s [%"PRId32"] (%s) ",
                                              states[i].topic,

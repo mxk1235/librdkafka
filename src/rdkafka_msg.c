@@ -1171,7 +1171,7 @@ int32_t rd_kafka_msg_sticky_partition (rd_kafka_topic_t *rkt,
  */
 int rd_kafka_msg_partitioner (rd_kafka_topic_t *rkt, rd_kafka_msg_t *rkm,
                               rd_dolock_t do_lock) {
-	int32_t partition;
+	int32_t partition = RD_KAFKA_PARTITION_UA;
 	rd_kafka_toppar_t *rktp_new;
 	rd_kafka_resp_err_t err;
 
